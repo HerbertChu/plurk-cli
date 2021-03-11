@@ -1,0 +1,9 @@
+{
+  "name": "test-module",
+  "author": "herbert.chu",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "permissions": [
+    "--allow-net"
+  ]
+}
