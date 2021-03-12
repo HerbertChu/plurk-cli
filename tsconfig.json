@@ -16,7 +16,6 @@
     "forceConsistentCasingInFileNames": true /* Disallow inconsistently-cased references to the same file. */,
     "plugins": [{ "name": "deno_ls_plugin" }],
     "pretty": true,
-    "no-inferrable-types": [true, "ignore-params", "ignore-properties"],
     "paths": {
       "deno": ["../../.deno/deno.d.ts"],
       "http://*": ["../../Library/Caches/deno/deps/http/*"],
