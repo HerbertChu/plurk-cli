@@ -1,4 +1,4 @@
-import { HttpClient } from "../libs/HttpClient.ts";
+import { PlurkOAuth } from "./PlurkOAuth.ts";
 
 export class AddPuRequest {
   content!: string;
@@ -14,12 +14,18 @@ export class AddPuRequest {
 }
 
 export class PlurkClient {
-  public add2Timeline(content: string, qulifier = "says"): void {
-    let pu: AddPuRequest = new AddPuRequest();
+  constructor(private readonly oauth: PlurkOAuth) {}
+
+  /** Post a plurk to the timeline via a signed Plurk API call. */
+  public add2Timeline(content: string, qualifier = "says"): Promise<Response> {
+    const pu = new AddPuRequest();
     pu.content = content;
-    pu.qualifier = qulifier;
-    console.log(JSON.stringify(pu));
-    let httpClient = HttpClient.instance();
-    httpClient.post("https://www.plurk.com/APP/Timeline/plurkAdd", pu);
+    pu.qualifier = qualifier;
+    return this.oauth.request("/APP/Timeline/plurkAdd", {
+      content: pu.content,
+      qualifier: pu.qualifier,
+      lang: pu.lang,
+      no_comments: String(pu.no_comments),
+    });
   }
 }

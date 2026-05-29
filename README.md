@@ -4,8 +4,11 @@
 
 ### Start
 
+Post a plurk by passing the content as an argument (or piping it via stdin):
+
 ```
-deno run --allow-net --allow-env src/Main.ts
+deno run --allow-net --allow-env src/Main.ts "Hello from plurk-cli"
+echo "Hello from plurk-cli" | deno run --allow-net --allow-env src/Main.ts
 ```
 
 ### Authentication (Plurk OAuth 1.0a)
@@ -19,7 +22,17 @@ export PLURK_APP_KEY=your_app_key
 export PLURK_APP_SECRET=your_app_secret
 ```
 
-`src/plurk/PlurkOAuth.ts` implements the flow:
+The first run prints an authorization URL and asks you to paste back the
+verifier code Plurk shows after you approve the app. It then prints an access
+token — export it to skip the interactive step on subsequent runs:
+
+```
+export PLURK_ACCESS_TOKEN=your_access_token
+export PLURK_ACCESS_TOKEN_SECRET=your_access_token_secret
+```
+
+`src/plurk/PlurkOAuth.ts` implements the flow directly if you want to drive it
+yourself:
 
 ```ts
 import { PlurkOAuth } from "./src/plurk/PlurkOAuth.ts";
