@@ -7,9 +7,11 @@
 Post a plurk by passing the content as an argument (or piping it via stdin):
 
 ```
-deno run --allow-net --allow-env src/Main.ts "Hello from plurk-cli"
-echo "Hello from plurk-cli" | deno run --allow-net --allow-env src/Main.ts
+deno run --allow-net --allow-env --allow-read --allow-write src/Main.ts "Hello from plurk-cli"
+echo "Hello from plurk-cli" | deno run --allow-net --allow-env --allow-read --allow-write src/Main.ts
 ```
+
+(`--allow-read` / `--allow-write` let the CLI cache your access token; see below.)
 
 ### Authentication (Plurk OAuth 1.0a)
 
@@ -23,8 +25,12 @@ export PLURK_APP_SECRET=your_app_secret
 ```
 
 The first run prints an authorization URL and asks you to paste back the
-verifier code Plurk shows after you approve the app. It then prints an access
-token — export it to skip the interactive step on subsequent runs:
+verifier code Plurk shows after you approve the app. The resulting access token
+is then saved to `~/.plurk-cli.json` (override the path with `PLURK_TOKEN_FILE`),
+so subsequent runs skip the interactive step automatically.
+
+To use a token without the file — e.g. in CI — set these environment variables,
+which take precedence over the saved file:
 
 ```
 export PLURK_ACCESS_TOKEN=your_access_token
@@ -56,7 +62,7 @@ const res = await oauth.request("/APP/Timeline/plurkAdd", {
 ### Test
 
 ```
-deno test
+deno test --allow-read --allow-write --allow-env
 ```
 
 ### Install Denon

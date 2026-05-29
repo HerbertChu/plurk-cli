@@ -1,6 +1,7 @@
 import { StdinReader } from "./libs/StdinReader.ts";
 import { PlurkClient } from "./plurk/PlurkClient.ts";
 import { PlurkOAuth } from "./plurk/PlurkOAuth.ts";
+import { TokenStore } from "./plurk/TokenStore.ts";
 
 export class PlurkCli {
   /**
@@ -18,22 +19,28 @@ export class PlurkCli {
   }
 
   /**
-   * Return an authorized PlurkOAuth. If PLURK_ACCESS_TOKEN /
-   * PLURK_ACCESS_TOKEN_SECRET are set we reuse them; otherwise we run the
-   * interactive three-legged flow and print the tokens so they can be saved.
+   * Return an authorized PlurkOAuth. Tokens are resolved in priority order:
+   *   1. PLURK_ACCESS_TOKEN / PLURK_ACCESS_TOKEN_SECRET environment variables
+   *   2. a previously saved token file (see TokenStore)
+   *   3. the interactive three-legged flow, whose result is then saved
    */
   public static async resolveOAuth(): Promise<PlurkOAuth> {
-    const token = Deno.env.get("PLURK_ACCESS_TOKEN");
-    const tokenSecret = Deno.env.get("PLURK_ACCESS_TOKEN_SECRET");
-    const oauth = new PlurkOAuth(
-      undefined,
-      undefined,
-      token && tokenSecret ? { token, tokenSecret } : undefined,
-    );
-    if (token && tokenSecret) {
-      return oauth;
+    const envToken = Deno.env.get("PLURK_ACCESS_TOKEN");
+    const envSecret = Deno.env.get("PLURK_ACCESS_TOKEN_SECRET");
+    if (envToken && envSecret) {
+      return new PlurkOAuth(undefined, undefined, {
+        token: envToken,
+        tokenSecret: envSecret,
+      });
     }
 
+    const store = new TokenStore();
+    const saved = await store.load();
+    if (saved) {
+      return new PlurkOAuth(undefined, undefined, saved);
+    }
+
+    const oauth = new PlurkOAuth();
     const requestToken = await oauth.getRequestToken();
     console.log("\nAuthorize plurk-cli in your browser:");
     console.log("  " + oauth.getAuthorizationUrl(requestToken));
@@ -42,9 +49,8 @@ export class PlurkCli {
       throw new Error("No verifier provided; authorization aborted.");
     }
     const accessToken = await oauth.getAccessToken(requestToken, verifier.trim());
-    console.log("\nAuthorized! Export these to skip this step next time:");
-    console.log(`  export PLURK_ACCESS_TOKEN=${accessToken.token}`);
-    console.log(`  export PLURK_ACCESS_TOKEN_SECRET=${accessToken.tokenSecret}\n`);
+    await store.save(accessToken);
+    console.log(`\nAuthorized! Access token saved to ${store.location}`);
     return oauth;
   }
 

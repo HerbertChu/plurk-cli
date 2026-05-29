@@ -5,7 +5,7 @@
       "cmd": "deno run src/Main.ts",
       "desc": "run plurk-cli",
       "unstable": true,
-      "allow": ["net", "env"],
+      "allow": ["net", "env", "read", "write"],
       "watch": true
     }
   }

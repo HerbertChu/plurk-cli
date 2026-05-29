@@ -5,6 +5,8 @@
   "main": "src/index.ts",
   "permissions": [
     "--allow-net",
-    "--allow-env"
+    "--allow-env",
+    "--allow-read",
+    "--allow-write"
   ]
 }
