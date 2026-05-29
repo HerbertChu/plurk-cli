@@ -1,23 +1,10 @@
 import { StdinReader } from "./libs/StdinReader.ts";
+import { Repl } from "./Repl.ts";
 import { PlurkClient } from "./plurk/PlurkClient.ts";
 import { PlurkOAuth } from "./plurk/PlurkOAuth.ts";
 import { TokenStore } from "./plurk/TokenStore.ts";
 
 export class PlurkCli {
-  /**
-   * The plurk content, taken from the command-line arguments and falling back
-   * to stdin (so `plurk "hi"` and `echo hi | plurk` both work). Reading from
-   * args keeps stdin free for the interactive authorization prompt.
-   */
-  public static async readContent(): Promise<string> {
-    const fromArgs = Deno.args.join(" ").trim();
-    if (fromArgs) {
-      return fromArgs;
-    }
-    const fromStdin = await StdinReader.read();
-    return fromStdin.trim();
-  }
-
   /**
    * Return an authorized PlurkOAuth. Tokens are resolved in priority order:
    *   1. PLURK_ACCESS_TOKEN / PLURK_ACCESS_TOKEN_SECRET environment variables
@@ -54,15 +41,34 @@ export class PlurkCli {
     return oauth;
   }
 
+  /**
+   * Entry point. With content on the command line (or piped via stdin) it posts
+   * once and exits; on an interactive terminal it starts the slash-command REPL.
+   */
   public static async run(): Promise<void> {
-    const content = await PlurkCli.readContent();
-    if (!content) {
-      console.error(
-        "Nothing to post. Pass content as an argument or pipe it via stdin.",
-      );
-      Deno.exit(1);
+    const fromArgs = Deno.args.join(" ").trim();
+    if (fromArgs) {
+      await PlurkCli.postOnce(fromArgs);
+      return;
     }
 
+    if (!Deno.stdin.isTerminal()) {
+      const piped = (await StdinReader.read()).trim();
+      if (piped) {
+        await PlurkCli.postOnce(piped);
+      }
+      return;
+    }
+
+    await new Repl({
+      authorize: () => PlurkCli.resolveOAuth(),
+      store: new TokenStore(),
+      readLine: (label) => prompt(label),
+      log: (message) => console.log(message),
+    }).start();
+  }
+
+  private static async postOnce(content: string): Promise<void> {
     const oauth = await PlurkCli.resolveOAuth();
     const response = await new PlurkClient(oauth).add2Timeline(content);
     const body = await response.text();

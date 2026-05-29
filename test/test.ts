@@ -9,6 +9,7 @@ import {
   percentEncode,
 } from "../src/plurk/PlurkOAuth.ts";
 import { TokenStore } from "../src/plurk/TokenStore.ts";
+import { Repl } from "../src/Repl.ts";
 
 Deno.test("AddPuRequest has sane default values", () => {
   const pu = new AddPuRequest();
@@ -95,5 +96,56 @@ Deno.test("TokenStore.load returns undefined when the file is missing", async ()
     assertEquals(await store.load(), undefined);
   } finally {
     await Deno.remove(dir, { recursive: true });
+  }
+});
+
+// Build a Repl with captured output and an authorizer that fails if called,
+// so command dispatch can be tested without any network.
+function makeRepl(store: TokenStore) {
+  const logs: string[] = [];
+  const repl = new Repl({
+    authorize: () => {
+      throw new Error("authorize should not be called");
+    },
+    store,
+    readLine: () => null,
+    log: (message) => logs.push(message),
+  });
+  return { repl, logs };
+}
+
+Deno.test("Repl /help lists commands without authorizing", async () => {
+  const { repl, logs } = makeRepl(new TokenStore("unused"));
+  assertEquals(await repl.handle("/help"), false);
+  assertStringIncludes(logs.join("\n"), "/post");
+});
+
+Deno.test("Repl /quit signals exit", async () => {
+  const { repl, logs } = makeRepl(new TokenStore("unused"));
+  assertEquals(await repl.handle("/quit"), true);
+  assertStringIncludes(logs.join("\n"), "Bye");
+});
+
+Deno.test("Repl reports unknown commands", async () => {
+  const { repl, logs } = makeRepl(new TokenStore("unused"));
+  assertEquals(await repl.handle("/nope"), false);
+  assertStringIncludes(logs.join("\n"), "Unknown command");
+});
+
+Deno.test("Repl /logout removes the saved token", async () => {
+  const path = await Deno.makeTempFile();
+  try {
+    const store = new TokenStore(path);
+    await store.save({ token: "t", tokenSecret: "s" });
+    const { repl, logs } = makeRepl(store);
+    assertEquals(await repl.handle("/logout"), false);
+    assertEquals(await store.load(), undefined);
+    assertStringIncludes(logs.join("\n"), "Logged out");
+  } finally {
+    try {
+      await Deno.remove(path);
+    } catch {
+      // Already removed by /logout.
+    }
   }
 });

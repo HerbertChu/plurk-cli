@@ -4,7 +4,27 @@
 
 ### Start
 
-Post a plurk by passing the content as an argument (or piping it via stdin):
+Run with no arguments to open the interactive slash-command prompt:
+
+```
+deno run --allow-net --allow-env --allow-read --allow-write src/Main.ts
+```
+
+```
+plurk-cli — type /help for commands, /quit to exit.
+plurk> /post Hello from plurk-cli
+Posted! plurk_id: 1234567890
+plurk> /whoami
+Logged in as alice (id 42).
+plurk> /quit
+Bye!
+```
+
+Available commands: `/post <text>` (or just type text), `/whoami`, `/login`,
+`/logout`, `/help`, `/quit`.
+
+For scripting, pass the content as an argument or pipe it via stdin to post once
+and exit:
 
 ```
 deno run --allow-net --allow-env --allow-read --allow-write src/Main.ts "Hello from plurk-cli"

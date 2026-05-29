@@ -61,4 +61,17 @@ export class TokenStore {
       // chmod is unsupported on some platforms (e.g. Windows); ignore.
     }
   }
+
+  /** Delete the saved token. Returns whether a file was actually removed. */
+  async clear(): Promise<boolean> {
+    try {
+      await Deno.remove(this.path);
+      return true;
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        return false;
+      }
+      throw error;
+    }
+  }
 }
