@@ -14,14 +14,26 @@ deno run --allow-net --allow-env --allow-read --allow-write src/Main.ts
 plurk-cli — type /help for commands, /quit to exit.
 plurk> /post Hello from plurk-cli
 Posted! plurk_id: 1234567890
+plurk> /timeline
+... opens a scrollable timeline ...
 plurk> /whoami
 Logged in as alice (id 42).
 plurk> /quit
 Bye!
 ```
 
-Available commands: `/post <text>` (or just type text), `/whoami`, `/login`,
-`/logout`, `/help`, `/quit`.
+Available commands: `/post <text>` (or just type text), `/timeline [n]`,
+`/whoami`, `/login`, `/logout`, `/help`, `/quit`.
+
+`/timeline` renders the latest plurks as cards and opens a full-screen viewer
+you can scroll with the keyboard:
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `k` / `j` | scroll one line |
+| `space` / `b` | page down / up |
+| `g` / `G` | jump to top / bottom |
+| `q` / `Esc` | close the viewer |
 
 For scripting, pass the content as an argument or pipe it via stdin to post once
 and exit:

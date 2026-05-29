@@ -10,6 +10,13 @@ import {
 } from "../src/plurk/PlurkOAuth.ts";
 import { TokenStore } from "../src/plurk/TokenStore.ts";
 import { Repl } from "../src/Repl.ts";
+import {
+  relativeTime,
+  renderTimeline,
+  stripHtml,
+  wrapText,
+} from "../src/Timeline.ts";
+import { ScrollState } from "../src/Pager.ts";
 
 Deno.test("AddPuRequest has sane default values", () => {
   const pu = new AddPuRequest();
@@ -148,4 +155,85 @@ Deno.test("Repl /logout removes the saved token", async () => {
       // Already removed by /logout.
     }
   }
+});
+
+Deno.test("relativeTime formats common ranges", () => {
+  const now = new Date("2026-05-29T12:00:00Z");
+  assertEquals(relativeTime("2026-05-29T11:59:30Z", now), "30s ago");
+  assertEquals(relativeTime("2026-05-29T11:30:00Z", now), "30m ago");
+  assertEquals(relativeTime("2026-05-29T09:00:00Z", now), "3h ago");
+  assertEquals(relativeTime("2026-05-27T12:00:00Z", now), "2d ago");
+  assertEquals(relativeTime("not a date", now), "");
+});
+
+Deno.test("stripHtml removes tags and decodes entities", () => {
+  assertEquals(stripHtml('<a href="x">hi</a> &amp; bye'), "hi & bye");
+  assertEquals(stripHtml("line1<br>line2"), "line1 line2");
+});
+
+Deno.test("wrapText wraps on word boundaries and hard-breaks long words", () => {
+  assertEquals(wrapText("a bb ccc", 4), ["a bb", "ccc"]);
+  assertEquals(wrapText("abcdef", 3), ["abc", "def"]);
+  assertEquals(wrapText("", 10), [""]);
+});
+
+Deno.test("renderTimeline draws a left-bar card", () => {
+  const now = new Date("2026-05-29T12:00:00Z");
+  const out = renderTimeline({
+    plurks: [{
+      owner_id: 1,
+      qualifier: "says",
+      content_raw: "Hello world",
+      posted: "2026-05-29T11:00:00Z",
+      response_count: 2,
+    }],
+    plurk_users: { "1": { nick_name: "alice" } },
+  }, { color: false, width: 40, now });
+  assertStringIncludes(out, "┃ alice says");
+  assertStringIncludes(out, "1h ago");
+  assertStringIncludes(out, "Hello world");
+  assertStringIncludes(out, "2 replies");
+});
+
+Deno.test("renderTimeline handles an empty timeline", () => {
+  assertEquals(renderTimeline({ plurks: [] }), "Timeline is empty.");
+});
+
+Deno.test("ScrollState clamps the offset within range", () => {
+  const state = new ScrollState(100, 10);
+  assertEquals(state.offset, 0);
+  state.by(-5);
+  assertEquals(state.offset, 0);
+  state.by(5);
+  assertEquals(state.offset, 5);
+  state.toBottom();
+  assertEquals(state.offset, 90);
+  state.by(50);
+  assertEquals(state.offset, 90);
+  state.toTop();
+  assertEquals(state.offset, 0);
+});
+
+Deno.test("ScrollState paging steps by viewport minus one", () => {
+  const state = new ScrollState(50, 10);
+  state.pageDown();
+  assertEquals(state.offset, 9);
+  state.pageDown();
+  assertEquals(state.offset, 18);
+  state.pageUp();
+  assertEquals(state.offset, 9);
+});
+
+Deno.test("ScrollState.visible returns the current window", () => {
+  const lines = Array.from({ length: 20 }, (_, i) => `L${i}`);
+  const state = new ScrollState(20, 5);
+  state.by(3);
+  assertEquals(state.visible(lines), ["L3", "L4", "L5", "L6", "L7"]);
+});
+
+Deno.test("ScrollState pins to top when content fits the viewport", () => {
+  const state = new ScrollState(3, 10);
+  assertEquals(state.maxOffset, 0);
+  state.toBottom();
+  assertEquals(state.offset, 0);
 });

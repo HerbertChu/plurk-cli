@@ -1,6 +1,7 @@
 import { PlurkClient } from "./plurk/PlurkClient.ts";
 import { PlurkOAuth } from "./plurk/PlurkOAuth.ts";
 import { TokenStore } from "./plurk/TokenStore.ts";
+import { renderTimeline, TimelineData } from "./Timeline.ts";
 
 // Dependencies are injected so the REPL can be driven (and unit-tested)
 // without touching the real terminal.
@@ -13,16 +14,24 @@ export interface ReplDeps {
   readLine: (prompt: string) => string | null;
   /** Emit a line of output. */
   log: (message: string) => void;
+  /** Render the timeline with ANSI colors (default false). */
+  color?: boolean;
+  /** Terminal width for timeline rendering (default 70). */
+  width?: number;
+  /** Optional scrollable viewer; when absent the timeline is just logged. */
+  pager?: (text: string) => Promise<void>;
 }
 
 const HELP = [
   "Commands:",
-  "  /post <text>   Post a plurk as \"says\" (alias: /p, or just type text)",
-  "  /whoami        Show the authorized account (alias: /me)",
-  "  /login         Authorize, or re-authorize, this app",
-  "  /logout        Remove the saved access token",
-  "  /help          Show this help (alias: /h, /?)",
-  "  /quit          Exit (alias: /exit, /q)",
+  "  /post <text>     Post a plurk as \"says\" (alias: /p, or just type text)",
+  "  /timeline [n]    Show the latest plurks; scroll with arrows/j/k, q to quit",
+  "                   (aliases: /tl, /t)",
+  "  /whoami          Show the authorized account (alias: /me)",
+  "  /login           Authorize, or re-authorize, this app",
+  "  /logout          Remove the saved access token",
+  "  /help            Show this help (alias: /h, /?)",
+  "  /quit            Exit (alias: /exit, /q)",
 ].join("\n");
 
 export class Repl {
@@ -74,6 +83,11 @@ export class Repl {
       case "p":
         await this.post(argument);
         return false;
+      case "timeline":
+      case "tl":
+      case "t":
+        await this.timeline(argument);
+        return false;
       case "whoami":
       case "me":
         await this.whoami();
@@ -111,6 +125,38 @@ export class Repl {
       return;
     }
     this.deps.log(`Posted! plurk_id: ${Repl.field(body, "plurk_id")}`);
+  }
+
+  private async timeline(arg: string): Promise<void> {
+    const params: Record<string, string> = {};
+    const limit = Number.parseInt(arg.trim(), 10);
+    if (Number.isFinite(limit) && limit > 0) {
+      params.limit = String(Math.min(limit, 30));
+    }
+    const oauth = await this.ensureAuth();
+    const response = await oauth.request("/APP/Timeline/getPlurks", params, "GET");
+    const body = await response.text();
+    if (!response.ok) {
+      this.deps.log(`Failed (${response.status}): ${body}`);
+      return;
+    }
+    let data: TimelineData;
+    try {
+      data = JSON.parse(body);
+    } catch {
+      this.deps.log(body);
+      return;
+    }
+    const text = renderTimeline(data, {
+      color: this.deps.color ?? false,
+      width: this.deps.width ?? 70,
+      now: new Date(),
+    });
+    if (this.deps.pager) {
+      await this.deps.pager(text);
+    } else {
+      this.deps.log(text);
+    }
   }
 
   private async whoami(): Promise<void> {
