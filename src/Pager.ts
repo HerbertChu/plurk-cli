@@ -1,9 +1,11 @@
-// A small scrolling pager for viewing the timeline with the keyboard.
+// A small scrolling viewer for the timeline.
 //
 // The scroll math lives in ScrollState, which is pure and unit-tested. The
-// terminal driver (runPager) is a thin layer over an injectable PagerIO so the
-// raw-mode/escape-sequence handling is isolated; that layer is exercised
+// terminal driver (viewTimeline) is a thin layer over an injectable PagerIO so
+// the raw-mode/escape-sequence handling is isolated; that layer is exercised
 // manually rather than in tests.
+
+import { composeCards, renderCardBoxes, TimelineData } from "./Timeline.ts";
 
 export class ScrollState {
   private top = 0;
@@ -63,6 +65,8 @@ export class ScrollState {
 export type PagerKey =
   | "up"
   | "down"
+  | "left"
+  | "right"
   | "pageup"
   | "pagedown"
   | "top"
@@ -93,6 +97,14 @@ export function mapKey(sequence: string): PagerKey {
     case "\x1b[A":
     case "\x1bOA":
       return "up";
+    case "l":
+    case "\x1b[C":
+    case "\x1bOC":
+      return "right";
+    case "h":
+    case "\x1b[D":
+    case "\x1bOD":
+      return "left";
     case " ":
     case "f":
     case "\x1b[6~":
@@ -144,40 +156,74 @@ function denoIO(): PagerIO {
   };
 }
 
+const GAP = 2;
 const FOOTER_ROWS = 1;
 
-function frame(lines: string[], state: ScrollState): string {
-  const view = state.visible(lines);
-  const footer = "\x1b[7m " +
-    "↑↓/jk scroll · space/b page · g/G top/bottom · q quit" +
-    (state.atBottom ? " · (end)" : "") +
-    " \x1b[0m";
-  // Home, clear screen, body (CR+LF for raw mode), then the status footer.
-  return "\x1b[H\x1b[2J" + view.join("\r\n") + "\r\n" + footer;
+function visibleCount(columns: number, cardWidth: number): number {
+  return Math.max(1, Math.floor((columns + GAP) / (cardWidth + GAP)));
 }
 
-/** Display `text` in a full-screen, keyboard-scrollable viewer. */
-export async function runPager(
-  text: string,
+function frame(
+  boxes: string[][],
+  state: ScrollState,
+  total: number,
+): string {
+  const view = state.visible(boxes);
+  const body = composeCards(view, GAP);
+  const range = view.length > 0
+    ? `${state.offset + 1}-${state.offset + view.length}/${total}`
+    : `0/${total}`;
+  const footer = "\x1b[7m " +
+    "←→/hl scroll · space/b page · g/G ends · q quit · " + range +
+    " \x1b[0m";
+  // Home, clear screen, composed cards (CR+LF for raw mode), then the footer.
+  return "\x1b[H\x1b[2J" + body.join("\r\n") + "\r\n" + footer;
+}
+
+/**
+ * Display the timeline as a horizontal, left-to-right river of cards and let
+ * the user scroll through it with the keyboard (←/→ or h/l, one card at a
+ * time; space/b to page; g/G for the ends; q/Esc to quit).
+ */
+export async function viewTimeline(
+  data: TimelineData,
+  options: { color?: boolean } = {},
   io: PagerIO = denoIO(),
 ): Promise<void> {
-  const lines = text.split("\n");
-  const state = new ScrollState(lines.length, io.size().rows - FOOTER_ROWS);
+  const plurks = data.plurks ?? [];
+  if (plurks.length === 0) {
+    io.write("Timeline is empty.\n");
+    return;
+  }
+
+  const size = io.size();
+  const cardWidth = Math.max(24, Math.min(36, size.columns));
+  const cardHeight = Math.max(6, Math.min(16, size.rows - FOOTER_ROWS - 1));
+  const boxes = renderCardBoxes(data, {
+    width: cardWidth,
+    height: cardHeight,
+    color: options.color ?? false,
+    now: new Date(),
+  });
+  const state = new ScrollState(boxes.length, visibleCount(size.columns, cardWidth));
 
   io.setRaw(true);
   io.write("\x1b[?1049h\x1b[?25l"); // enter alt screen, hide cursor
   try {
     while (true) {
-      state.setViewport(io.size().rows - FOOTER_ROWS);
-      io.write(frame(lines, state));
+      const current = io.size();
+      state.setViewport(visibleCount(current.columns, cardWidth));
+      io.write(frame(boxes, state, boxes.length));
       const key = await io.readKey();
       if (key === null || key === "quit") {
         break;
       }
       switch (key) {
+        case "right":
         case "down":
           state.by(1);
           break;
+        case "left":
         case "up":
           state.by(-1);
           break;

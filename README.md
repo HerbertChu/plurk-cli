@@ -25,15 +25,18 @@ Bye!
 Available commands: `/post <text>` (or just type text), `/timeline [n]`,
 `/whoami`, `/login`, `/logout`, `/help`, `/quit`.
 
-`/timeline` renders the latest plurks as cards and opens a full-screen viewer
-you can scroll with the keyboard:
+`/timeline` renders the latest plurks as cards laid out left-to-right (like the
+Plurk web river) and opens a full-screen viewer you scroll with the keyboard:
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` or `k` / `j` | scroll one line |
-| `space` / `b` | page down / up |
-| `g` / `G` | jump to top / bottom |
+| `→` / `←` or `l` / `h` | move one card right / left |
+| `space` / `b` | page forward / back |
+| `g` / `G` | jump to newest / oldest |
 | `q` / `Esc` | close the viewer |
+
+When the output is piped instead of shown on a terminal, the timeline is
+printed as plain vertical cards.
 
 For scripting, pass the content as an argument or pipe it via stdin to post once
 and exit:

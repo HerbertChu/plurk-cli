@@ -19,7 +19,7 @@ export interface ReplDeps {
   /** Terminal width for timeline rendering (default 70). */
   width?: number;
   /** Optional scrollable viewer; when absent the timeline is just logged. */
-  pager?: (text: string) => Promise<void>;
+  viewer?: (data: TimelineData) => Promise<void>;
 }
 
 const HELP = [
@@ -147,15 +147,16 @@ export class Repl {
       this.deps.log(body);
       return;
     }
-    const text = renderTimeline(data, {
-      color: this.deps.color ?? false,
-      width: this.deps.width ?? 70,
-      now: new Date(),
-    });
-    if (this.deps.pager) {
-      await this.deps.pager(text);
+    if (this.deps.viewer) {
+      // Interactive: horizontal, scrollable river of cards.
+      await this.deps.viewer(data);
     } else {
-      this.deps.log(text);
+      // Non-interactive (piped/tests): vertical cards as plain text.
+      this.deps.log(renderTimeline(data, {
+        color: this.deps.color ?? false,
+        width: this.deps.width ?? 70,
+        now: new Date(),
+      }));
     }
   }
 

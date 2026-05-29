@@ -178,3 +178,193 @@ export function renderTimeline(
     .map((plurk) => renderCard(plurk, users, resolved))
     .join("\n\n");
 }
+
+// ---------------------------------------------------------------------------
+// Horizontal (left-to-right) layout: each plurk is a fixed-size box, and the
+// boxes are placed side by side. This needs display-width-aware measurement so
+// full-width CJK content does not push the right border out of alignment.
+// ---------------------------------------------------------------------------
+
+/** Display columns a single code point occupies (1, or 2 for wide/CJK). */
+function charWidth(codePoint: number): number {
+  if (
+    (codePoint >= 0x1100 && codePoint <= 0x115f) || // Hangul Jamo
+    (codePoint >= 0x2e80 && codePoint <= 0x303e) || // CJK radicals .. punctuation
+    (codePoint >= 0x3041 && codePoint <= 0x33ff) || // Kana .. CJK symbols
+    (codePoint >= 0x3400 && codePoint <= 0x4dbf) || // CJK Ext A
+    (codePoint >= 0x4e00 && codePoint <= 0x9fff) || // CJK Unified
+    (codePoint >= 0xa000 && codePoint <= 0xa4cf) || // Yi
+    (codePoint >= 0xac00 && codePoint <= 0xd7a3) || // Hangul syllables
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) || // CJK compat
+    (codePoint >= 0xfe30 && codePoint <= 0xfe4f) || // CJK compat forms
+    (codePoint >= 0xff00 && codePoint <= 0xff60) || // Fullwidth forms
+    (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+    (codePoint >= 0x1f300 && codePoint <= 0x1faff) || // emoji & symbols
+    (codePoint >= 0x20000 && codePoint <= 0x3fffd) // CJK Ext B+
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+/** Total display width of a string. */
+export function displayWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    width += charWidth(ch.codePointAt(0)!);
+  }
+  return width;
+}
+
+/** Truncate to at most `width` display columns (never pads). */
+export function truncateToWidth(text: string, width: number): string {
+  let out = "";
+  let used = 0;
+  for (const ch of text) {
+    const w = charWidth(ch.codePointAt(0)!);
+    if (used + w > width) {
+      break;
+    }
+    out += ch;
+    used += w;
+  }
+  return out;
+}
+
+/** Truncate or pad with spaces to exactly `width` display columns. */
+export function fitToWidth(text: string, width: number): string {
+  const clipped = truncateToWidth(text, width);
+  const pad = width - displayWidth(clipped);
+  return pad > 0 ? clipped + " ".repeat(pad) : clipped;
+}
+
+/** Word wrap by display width; words wider than `width` are hard-broken. */
+export function wrapByWidth(text: string, width: number): string[] {
+  const max = Math.max(1, width);
+  const words = text.split(/\s+/).filter((word) => word.length > 0);
+  const lines: string[] = [];
+  let line = "";
+  for (let word of words) {
+    while (displayWidth(word) > max) {
+      if (line) {
+        lines.push(line);
+        line = "";
+      }
+      const head = truncateToWidth(word, max);
+      lines.push(head);
+      word = word.slice(head.length);
+    }
+    if (!line) {
+      line = word;
+    } else if (displayWidth(line) + 1 + displayWidth(word) <= max) {
+      line += " " + word;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) {
+    lines.push(line);
+  }
+  return lines.length > 0 ? lines : [""];
+}
+
+export interface CardBoxOptions {
+  /** Total box width including borders. */
+  width: number;
+  /** Total box height including borders. */
+  height: number;
+  color?: boolean;
+  now?: Date;
+}
+
+function renderCardBox(
+  plurk: Plurk,
+  users: Record<string, PlurkUser>,
+  width: number,
+  height: number,
+  color: boolean,
+  now: Date,
+): string[] {
+  const innerWidth = Math.max(4, width - 4);
+  const contentRows = Math.max(1, height - 2);
+
+  const owner = users[String(plurk.owner_id ?? plurk.user_id ?? "")] ?? {};
+  const name = owner.display_name || owner.nick_name || "someone";
+  const qualifier = plurk.qualifier_translated || plurk.qualifier || "says";
+  const time = plurk.posted ? relativeTime(plurk.posted, now) : "";
+  const rawContent = plurk.content_raw && plurk.content_raw.trim().length > 0
+    ? plurk.content_raw
+    : (plurk.content ?? "");
+  const text = stripHtml(rawContent);
+  const responses = plurk.response_count ?? 0;
+  const footer = responses > 0
+    ? `↳ ${responses === 1 ? "1 reply" : `${responses} replies`}`
+    : "";
+
+  const rows: { text: string; style: string }[] = [];
+  rows.push({ text: `${name} ${qualifier}`, style: ANSI.bold });
+  if (time) {
+    rows.push({ text: time, style: ANSI.gray });
+  }
+
+  const bodyBudget = Math.max(0, contentRows - rows.length - (footer ? 1 : 0));
+  let body = wrapByWidth(text, innerWidth);
+  if (body.length > bodyBudget) {
+    body = body.slice(0, bodyBudget);
+    if (bodyBudget > 0) {
+      body[bodyBudget - 1] =
+        truncateToWidth(body[bodyBudget - 1], Math.max(0, innerWidth - 1)) + "…";
+    }
+  }
+  for (const bodyLine of body) {
+    rows.push({ text: bodyLine, style: "" });
+  }
+  while (rows.length < contentRows - (footer ? 1 : 0)) {
+    rows.push({ text: "", style: "" });
+  }
+  if (footer) {
+    rows.push({ text: footer, style: ANSI.dim });
+  }
+  rows.length = Math.min(rows.length, contentRows);
+  while (rows.length < contentRows) {
+    rows.push({ text: "", style: "" });
+  }
+
+  const edge = (s: string) => paint(s, ANSI.cyan, color);
+  const lines = [edge("┌" + "─".repeat(width - 2) + "┐")];
+  for (const row of rows) {
+    const cell = fitToWidth(row.text, innerWidth);
+    const painted = row.style ? paint(cell, row.style, color) : cell;
+    lines.push(`${edge("│")} ${painted} ${edge("│")}`);
+  }
+  lines.push(edge("└" + "─".repeat(width - 2) + "┘"));
+  return lines;
+}
+
+/** Render each plurk as a fixed-size box (height lines tall). */
+export function renderCardBoxes(
+  data: TimelineData,
+  options: CardBoxOptions,
+): string[][] {
+  const users = data.plurk_users ?? {};
+  const now = options.now ?? new Date();
+  const color = options.color ?? false;
+  return (data.plurks ?? []).map((plurk) =>
+    renderCardBox(plurk, users, options.width, options.height, color, now)
+  );
+}
+
+/** Lay boxes (all the same height) side by side into composite rows. */
+export function composeCards(boxes: string[][], gap = 2): string[] {
+  if (boxes.length === 0) {
+    return [];
+  }
+  const height = boxes[0].length;
+  const separator = " ".repeat(gap);
+  const rows: string[] = [];
+  for (let r = 0; r < height; r++) {
+    rows.push(boxes.map((box) => box[r] ?? "").join(separator));
+  }
+  return rows;
+}

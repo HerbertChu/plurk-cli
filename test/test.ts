@@ -11,9 +11,15 @@ import {
 import { TokenStore } from "../src/plurk/TokenStore.ts";
 import { Repl } from "../src/Repl.ts";
 import {
+  composeCards,
+  displayWidth,
+  fitToWidth,
   relativeTime,
+  renderCardBoxes,
   renderTimeline,
   stripHtml,
+  truncateToWidth,
+  wrapByWidth,
   wrapText,
 } from "../src/Timeline.ts";
 import { ScrollState } from "../src/Pager.ts";
@@ -236,4 +242,45 @@ Deno.test("ScrollState pins to top when content fits the viewport", () => {
   assertEquals(state.maxOffset, 0);
   state.toBottom();
   assertEquals(state.offset, 0);
+});
+
+Deno.test("displayWidth counts CJK as two columns", () => {
+  assertEquals(displayWidth("ab"), 2);
+  assertEquals(displayWidth("中文"), 4);
+  assertEquals(displayWidth("a中b"), 4);
+});
+
+Deno.test("truncateToWidth respects wide-character boundaries", () => {
+  assertEquals(truncateToWidth("中文字", 3), "中"); // 文 would overflow to 4
+  assertEquals(truncateToWidth("abcd", 3), "abc");
+});
+
+Deno.test("fitToWidth pads or truncates to an exact display width", () => {
+  assertEquals(displayWidth(fitToWidth("中", 5)), 5);
+  assertEquals(fitToWidth("ab", 4), "ab  ");
+  assertEquals(displayWidth(fitToWidth("中文字", 4)), 4);
+});
+
+Deno.test("wrapByWidth hard-breaks CJK runs by display width", () => {
+  assertEquals(wrapByWidth("中文字測試", 4), ["中文", "字測", "試"]);
+  assertEquals(wrapByWidth("hello world", 5), ["hello", "world"]);
+});
+
+Deno.test("renderCardBoxes returns fixed-height boxes", () => {
+  const boxes = renderCardBoxes({
+    plurks: [{ owner_id: 1, qualifier: "says", content_raw: "hi" }],
+    plurk_users: { "1": { nick_name: "alice" } },
+  }, { width: 20, height: 8, color: false });
+  assertEquals(boxes.length, 1);
+  assertEquals(boxes[0].length, 8);
+  assertStringIncludes(boxes[0].join("\n"), "alice says");
+  assertStringIncludes(boxes[0][0], "┌");
+});
+
+Deno.test("composeCards lays boxes side by side", () => {
+  assertEquals(
+    composeCards([["A1", "A2"], ["B1", "B2"]], 1),
+    ["A1 B1", "A2 B2"],
+  );
+  assertEquals(composeCards([]), []);
 });
