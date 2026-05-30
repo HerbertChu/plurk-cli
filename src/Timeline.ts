@@ -28,7 +28,14 @@ export interface Plurk {
 
 export interface TimelineData {
   plurks?: Plurk[];
+  // getPlurks returns "plurk_users"; PlurkSearch/search returns "users".
   plurk_users?: Record<string, PlurkUser>;
+  users?: Record<string, PlurkUser>;
+}
+
+/** The user map, whichever key the endpoint used. */
+function userMap(data: TimelineData): Record<string, PlurkUser> {
+  return data.plurk_users ?? data.users ?? {};
 }
 
 export interface RenderOptions {
@@ -173,7 +180,7 @@ export function renderTimeline(
   if (plurks.length === 0) {
     return "Timeline is empty.";
   }
-  const users = data.plurk_users ?? {};
+  const users = userMap(data);
   return plurks
     .map((plurk) => renderCard(plurk, users, resolved))
     .join("\n\n");
@@ -347,7 +354,7 @@ export function renderCardBoxes(
   data: TimelineData,
   options: CardBoxOptions,
 ): string[][] {
-  const users = data.plurk_users ?? {};
+  const users = userMap(data);
   const now = options.now ?? new Date();
   const color = options.color ?? false;
   return (data.plurks ?? []).map((plurk) =>
@@ -383,7 +390,7 @@ export function renderFeedLines(
   const width = options.width ?? 70;
   const color = options.color ?? false;
   const now = options.now ?? new Date();
-  const users = data.plurk_users ?? {};
+  const users = userMap(data);
 
   const lines: string[] = [];
   for (const plurk of data.plurks ?? []) {

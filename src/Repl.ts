@@ -203,14 +203,22 @@ export class Repl {
 
   private async whoami(): Promise<void> {
     const oauth = await this.ensureAuth();
-    const response = await oauth.request("/APP/Users/me", {}, "GET");
+    const response = await oauth.request("/APP/Profile/getOwnProfile", {}, "GET");
     const body = await response.text();
     if (!response.ok) {
       this.deps.log(`Failed (${response.status}): ${body}`);
       return;
     }
-    const nick = Repl.field(body, "nick_name");
-    const id = Repl.field(body, "id");
+    // getOwnProfile nests the account under "user_info".
+    let info: Record<string, unknown> = {};
+    try {
+      info = JSON.parse(body)?.user_info ?? {};
+    } catch {
+      this.deps.log(body);
+      return;
+    }
+    const nick = info.display_name ?? info.nick_name ?? "?";
+    const id = info.id ?? "?";
     this.deps.log(`Logged in as ${nick} (id ${id}).`);
   }
 

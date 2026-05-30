@@ -206,6 +206,15 @@ Deno.test("renderTimeline handles an empty timeline", () => {
   assertEquals(renderTimeline({ plurks: [] }), "Timeline is empty.");
 });
 
+Deno.test("renderTimeline resolves names from a search-style users map", () => {
+  // PlurkSearch/search returns a "users" map rather than "plurk_users".
+  const out = renderTimeline({
+    plurks: [{ owner_id: 7, qualifier: "says", content_raw: "hi" }],
+    users: { "7": { nick_name: "bob" } },
+  }, { color: false });
+  assertStringIncludes(out, "bob says");
+});
+
 Deno.test("ScrollState clamps the offset within range", () => {
   const state = new ScrollState(100, 10);
   assertEquals(state.offset, 0);
