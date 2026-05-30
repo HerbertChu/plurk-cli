@@ -16,6 +16,7 @@ import {
   fitToWidth,
   relativeTime,
   renderCardBoxes,
+  renderFeedLines,
   renderTimeline,
   stripHtml,
   truncateToWidth,
@@ -283,4 +284,32 @@ Deno.test("composeCards lays boxes side by side", () => {
     ["A1 B1", "A2 B2"],
   );
   assertEquals(composeCards([]), []);
+});
+
+Deno.test("renderFeedLines renders two lines per plurk", () => {
+  const now = new Date("2026-05-29T12:00:00Z");
+  const lines = renderFeedLines({
+    plurks: [{
+      owner_id: 1,
+      qualifier: "says",
+      content_raw: "hello",
+      posted: "2026-05-29T11:00:00Z",
+      response_count: 2,
+    }],
+    plurk_users: { "1": { nick_name: "alice" } },
+  }, { width: 40, color: false, now });
+  assertEquals(lines.length, 2);
+  assertStringIncludes(lines[0], "● alice says");
+  assertStringIncludes(lines[0], "1h");
+  assertStringIncludes(lines[0], "↳2");
+  assertEquals(lines[1], "  hello");
+});
+
+Deno.test("renderFeedLines truncates long content to the width", () => {
+  const lines = renderFeedLines({
+    plurks: [{ owner_id: 1, content_raw: "x".repeat(100) }],
+    plurk_users: { "1": { nick_name: "a" } },
+  }, { width: 20, color: false, now: new Date() });
+  assertEquals(displayWidth(lines[1]), 20);
+  assertEquals(lines[1].endsWith("…"), true);
 });

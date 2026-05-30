@@ -69,7 +69,9 @@ export class PlurkCli {
       log: (message) => console.log(message),
       color: tty,
       width: Math.min(Math.max(PlurkCli.terminalColumns(), 40), 100),
-      viewer: tty ? (data) => viewTimeline(data, { color: tty }) : undefined,
+      viewer: tty
+        ? (data, layout) => viewTimeline(data, { color: tty, layout })
+        : undefined,
     }).start();
   }
 

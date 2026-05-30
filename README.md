@@ -22,17 +22,24 @@ plurk> /quit
 Bye!
 ```
 
-Available commands: `/post <text>` (or just type text), `/timeline [n]`,
-`/whoami`, `/login`, `/logout`, `/help`, `/quit`.
+Available commands: `/post <text>` (or just type text),
+`/timeline [n] [cards|feed]`, `/search <query>`, `/whoami`, `/login`,
+`/logout`, `/help`, `/quit`.
 
-`/timeline` renders the latest plurks as cards laid out left-to-right (like the
-Plurk web river) and opens a full-screen viewer you scroll with the keyboard:
+`/timeline` opens a full-screen viewer with two layouts:
+
+- **cards** (default): plurks laid out left-to-right, like the Plurk web river.
+- **feed**: a dense vertical list, two lines per plurk.
+
+Pick a layout with `/timeline feed`, or press `v` to switch while viewing.
+`/search <query>` browses search results in the same viewer (feed by default).
 
 | Key | Action |
 | --- | --- |
-| `→` / `←` or `l` / `h` | move one card right / left |
+| arrows or `h`/`j`/`k`/`l` | scroll one step |
 | `space` / `b` | page forward / back |
-| `g` / `G` | jump to newest / oldest |
+| `g` / `G` | jump to start / end |
+| `v` / `Tab` | switch cards ⇄ feed |
 | `q` / `Esc` | close the viewer |
 
 When the output is piped instead of shown on a terminal, the timeline is

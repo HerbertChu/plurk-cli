@@ -1,7 +1,7 @@
 import { PlurkClient } from "./plurk/PlurkClient.ts";
 import { PlurkOAuth } from "./plurk/PlurkOAuth.ts";
 import { TokenStore } from "./plurk/TokenStore.ts";
-import { renderTimeline, TimelineData } from "./Timeline.ts";
+import { renderTimeline, TimelineData, TimelineLayout } from "./Timeline.ts";
 
 // Dependencies are injected so the REPL can be driven (and unit-tested)
 // without touching the real terminal.
@@ -19,19 +19,21 @@ export interface ReplDeps {
   /** Terminal width for timeline rendering (default 70). */
   width?: number;
   /** Optional scrollable viewer; when absent the timeline is just logged. */
-  viewer?: (data: TimelineData) => Promise<void>;
+  viewer?: (data: TimelineData, layout: TimelineLayout) => Promise<void>;
 }
 
 const HELP = [
   "Commands:",
-  "  /post <text>     Post a plurk as \"says\" (alias: /p, or just type text)",
-  "  /timeline [n]    Show the latest plurks; scroll with arrows/j/k, q to quit",
-  "                   (aliases: /tl, /t)",
-  "  /whoami          Show the authorized account (alias: /me)",
-  "  /login           Authorize, or re-authorize, this app",
-  "  /logout          Remove the saved access token",
-  "  /help            Show this help (alias: /h, /?)",
-  "  /quit            Exit (alias: /exit, /q)",
+  "  /post <text>       Post a plurk as \"says\" (alias: /p, or just type text)",
+  "  /timeline [n] [m]  Show the latest plurks; m = cards|feed layout",
+  "                     scroll with arrows/hjkl, v to switch layout, q to quit",
+  "                     (aliases: /tl, /t)",
+  "  /search <query>    Search plurks and browse the results (alias: /s)",
+  "  /whoami            Show the authorized account (alias: /me)",
+  "  /login             Authorize, or re-authorize, this app",
+  "  /logout            Remove the saved access token",
+  "  /help              Show this help (alias: /h, /?)",
+  "  /quit              Exit (alias: /exit, /q)",
 ].join("\n");
 
 export class Repl {
@@ -88,6 +90,10 @@ export class Repl {
       case "t":
         await this.timeline(argument);
         return false;
+      case "search":
+      case "s":
+        await this.search(argument);
+        return false;
       case "whoami":
       case "me":
         await this.whoami();
@@ -129,29 +135,64 @@ export class Repl {
 
   private async timeline(arg: string): Promise<void> {
     const params: Record<string, string> = {};
-    const limit = Number.parseInt(arg.trim(), 10);
-    if (Number.isFinite(limit) && limit > 0) {
-      params.limit = String(Math.min(limit, 30));
+    let layout: TimelineLayout = "cards";
+    for (const token of arg.trim().split(/\s+/).filter(Boolean)) {
+      if (/^\d+$/.test(token)) {
+        params.limit = String(Math.min(Number.parseInt(token, 10), 30));
+      } else if (token === "feed" || token === "list") {
+        layout = "feed";
+      } else if (token === "cards" || token === "card") {
+        layout = "cards";
+      }
     }
+    const data = await this.fetchTimeline("/APP/Timeline/getPlurks", params);
+    if (data) {
+      await this.display(data, layout);
+    }
+  }
+
+  private async search(arg: string): Promise<void> {
+    const query = arg.trim();
+    if (!query) {
+      this.deps.log("Usage: /search <query>");
+      return;
+    }
+    const data = await this.fetchTimeline("/APP/PlurkSearch/search", { query });
+    if (!data) {
+      return;
+    }
+    if ((data.plurks ?? []).length === 0) {
+      this.deps.log(`No plurks found for "${query}".`);
+      return;
+    }
+    await this.display(data, "feed");
+  }
+
+  /** GET an endpoint that returns timeline-shaped JSON, or undefined on error. */
+  private async fetchTimeline(
+    path: string,
+    params: Record<string, string>,
+  ): Promise<TimelineData | undefined> {
     const oauth = await this.ensureAuth();
-    const response = await oauth.request("/APP/Timeline/getPlurks", params, "GET");
+    const response = await oauth.request(path, params, "GET");
     const body = await response.text();
     if (!response.ok) {
       this.deps.log(`Failed (${response.status}): ${body}`);
-      return;
+      return undefined;
     }
-    let data: TimelineData;
     try {
-      data = JSON.parse(body);
+      return JSON.parse(body) as TimelineData;
     } catch {
       this.deps.log(body);
-      return;
+      return undefined;
     }
+  }
+
+  private async display(data: TimelineData, layout: TimelineLayout): Promise<void> {
     if (this.deps.viewer) {
-      // Interactive: horizontal, scrollable river of cards.
-      await this.deps.viewer(data);
+      await this.deps.viewer(data, layout);
     } else {
-      // Non-interactive (piped/tests): vertical cards as plain text.
+      // Non-interactive (piped/tests): plain-text vertical cards.
       this.deps.log(renderTimeline(data, {
         color: this.deps.color ?? false,
         width: this.deps.width ?? 70,

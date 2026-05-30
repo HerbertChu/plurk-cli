@@ -368,3 +368,49 @@ export function composeCards(boxes: string[][], gap = 2): string[] {
   }
   return rows;
 }
+
+// ---------------------------------------------------------------------------
+// Compact "feed" layout: a dense vertical list, two lines per plurk.
+// ---------------------------------------------------------------------------
+
+export type TimelineLayout = "cards" | "feed";
+
+/** Render the timeline as a flat list of lines (two per plurk). */
+export function renderFeedLines(
+  data: TimelineData,
+  options: RenderOptions = {},
+): string[] {
+  const width = options.width ?? 70;
+  const color = options.color ?? false;
+  const now = options.now ?? new Date();
+  const users = data.plurk_users ?? {};
+
+  const lines: string[] = [];
+  for (const plurk of data.plurks ?? []) {
+    const owner = users[String(plurk.owner_id ?? plurk.user_id ?? "")] ?? {};
+    const name = owner.display_name || owner.nick_name || "someone";
+    const qualifier = plurk.qualifier_translated || plurk.qualifier || "says";
+    const time = plurk.posted ? relativeTime(plurk.posted, now) : "";
+    const responses = plurk.response_count ?? 0;
+    const meta = [time, responses > 0 ? `↳${responses}` : ""]
+      .filter((part) => part.length > 0)
+      .join(" · ");
+
+    const header = `${paint("●", ANSI.cyan, color)} ` +
+      paint(`${name} ${qualifier}`, ANSI.bold, color) +
+      (meta ? ` ${paint(`· ${meta}`, ANSI.gray, color)}` : "");
+
+    const rawContent = plurk.content_raw && plurk.content_raw.trim().length > 0
+      ? plurk.content_raw
+      : (plurk.content ?? "");
+    const text = stripHtml(rawContent);
+    const room = Math.max(0, width - 2);
+    const body = displayWidth(text) > room
+      ? truncateToWidth(text, Math.max(0, room - 1)) + "…"
+      : text;
+
+    lines.push(header);
+    lines.push(`  ${body}`);
+  }
+  return lines;
+}
